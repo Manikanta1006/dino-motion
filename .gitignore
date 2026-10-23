@@ -5,3 +5,8 @@ public/models/
 test-results/
 playwright-report/
 *.log
+.wrangler/
+.env
+.env.*
+.dev.vars
+.dev.vars.*

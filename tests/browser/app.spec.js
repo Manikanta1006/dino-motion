@@ -50,8 +50,9 @@ test("denied camera permission leaves keyboard fallback available", async ({
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Controls", exact: true }).click();
-  await page.getByRole("button", { name: "Enable camera" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Enable camera" }).click();
   await expect(page.getByRole("alert")).toContainText("permission was denied");
+  await page.getByLabel("Jump gesture").selectOption("hands");
   await expect(
     page.getByRole("button", { name: "Calibrate position", exact: true }),
   ).toBeDisabled();
@@ -101,10 +102,11 @@ test("real worker loads both models locally and processes fake camera frames", a
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Controls", exact: true }).click();
-  await page.getByRole("button", { name: "Enable camera" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Enable camera" }).click();
   await expect(page.getByText("LIVE", { exact: true })).toBeVisible({
     timeout: 60000,
   });
+  await page.getByLabel("Jump gesture").selectOption("hands");
   await page
     .getByRole("button", { name: "Calibrate position", exact: true })
     .click();

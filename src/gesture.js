@@ -42,6 +42,77 @@ export function bodySamples({
 }
 
 const mean = (values) => values.reduce((a, b) => a + b, 0) / values.length;
+
+// Use only shoulders, elbows and wrists; feet and face need not be in frame.
+export function isTPose({ arms, aspect = 4 / 3 }) {
+  if (!arms || arms.length !== 6 || arms.some((p) =>
+    !p || !Number.isFinite(p.x) || !Number.isFinite(p.y) ||
+    (p.visibility ?? 1) < 0.6 || (p.presence ?? 1) < 0.6 ||
+    p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1)) return null;
+  const [left, right, leftElbow, rightElbow, leftWrist, rightWrist] = arms;
+  const width = Math.hypot((left.x - right.x) * aspect, left.y - right.y);
+  if (!Number.isFinite(width) || width < 0.09) return null;
+  return [[left, leftElbow, leftWrist, right], [right, rightElbow, rightWrist, left]]
+    .every(([shoulder, elbow, wrist, other]) => {
+      const outward = Math.sign(shoulder.x - other.x);
+      return Math.abs(elbow.y - shoulder.y) / width < 0.3 &&
+        Math.abs(wrist.y - shoulder.y) / width < 0.35 &&
+        (elbow.x - shoulder.x) * outward * aspect / width > 0.3 &&
+        (wrist.x - elbow.x) * outward * aspect / width > 0.3;
+    });
+}
+
+export class PoseJumpController {
+  constructor() { this.reset(); }
+  reset() {
+    this.armed = false;
+    this.candidate = null;
+    this.neutralSince = null;
+    this.seen = null;
+    this.lastJump = -Infinity;
+  }
+  update(data, now) {
+    const pose = isTPose(data);
+    if (pose === null || (this.seen !== null && now - this.seen > 400)) {
+      this.armed = false;
+      this.candidate = null;
+      this.neutralSince = null;
+    }
+    this.seen = now;
+    let jump = false;
+    if (pose === false) {
+      this.candidate = null;
+      const [left, right, , , leftWrist, rightWrist] = data.arms;
+      const width = Math.hypot((left.x - right.x) * (data.aspect ?? 4 / 3), left.y - right.y);
+      if (leftWrist.y - left.y > width * 0.3 && rightWrist.y - right.y > width * 0.3) {
+        this.neutralSince ??= now;
+        if (now - this.neutralSince >= 180) this.armed = true;
+      } else this.neutralSince = null;
+    } else if (pose === true) {
+      this.neutralSince = null;
+      if (this.armed) {
+        this.candidate ??= now;
+        if (now - this.candidate >= 200) {
+          this.armed = false;
+          this.candidate = null;
+          if (now - this.lastJump >= 850) {
+            this.lastJump = now;
+            jump = true;
+          }
+        }
+      }
+    }
+    return {
+      jump, calibrated: false, hands: [], progress: 0,
+      direction: pose === true ? "T-pose" : "Neutral",
+      status: pose === null ? "Keep both shoulders, elbows and wrists in view"
+        : jump ? "T-pose detected · jump!"
+        : this.armed ? "Ready · stretch both arms out sideways to jump"
+        : "Lower both arms before your next T-pose jump",
+    };
+  }
+}
+
 export class GestureController {
   constructor({ threshold = 0.28, cooldown = 850 } = {}) {
     this.threshold = threshold;

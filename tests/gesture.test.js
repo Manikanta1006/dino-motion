@@ -1,6 +1,64 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GestureController, bodySamples } from "../src/gesture.js";
+import { GestureController, bodySamples, isTPose, PoseJumpController } from "../src/gesture.js";
+
+function poseData(raised = true, shift = 0, scale = 1) {
+  return { aspect: 1, arms: [
+    [0.4, 0.3], [0.6, 0.3],
+    [raised ? 0.25 : 0.4, raised ? 0.3 : 0.45],
+    [raised ? 0.75 : 0.6, raised ? 0.3 : 0.45],
+    [raised ? 0.1 : 0.4, raised ? 0.3 : 0.6],
+    [raised ? 0.9 : 0.6, raised ? 0.3 : 0.6],
+  ].map(([x, y]) => ({x: x * scale + shift, y: y * scale + shift, visibility: 0.99, presence: 0.99})) };
+}
+
+test("T-pose requires both straight sideways arms and confident visible joints", () => {
+  assert.equal(isTPose(poseData()), true);
+  assert.equal(isTPose(poseData(false)), false);
+  assert.equal(isTPose(poseData(true, 0.1, 0.75)), true);
+  const bent = poseData();
+  bent.arms[2].y += 0.2;
+  assert.equal(isTPose(bent), false);
+  bent.arms[2].visibility = 0.1;
+  assert.equal(isTPose(bent), null);
+  assert.equal(isTPose({}), null);
+});
+
+test("T-pose jumps once per hold and needs lowered arms before repeating", () => {
+  const engine = new PoseJumpController();
+  let now = 0, jumps = 0;
+  const feed = (data, duration) => {
+    for (let t = 0; t < duration; t += 40) {
+      now += 40;
+      if (engine.update(data, now).jump) jumps++;
+    }
+  };
+  feed(poseData(), 1200);
+  assert.equal(jumps, 0);
+  feed(poseData(false), 400);
+  feed(poseData(), 2000);
+  assert.equal(jumps, 1);
+  const bent = poseData();
+  bent.arms[2].y += 0.2;
+  feed(bent, 400);
+  feed(poseData(), 1200);
+  assert.equal(jumps, 1);
+  feed(poseData(false), 400);
+  feed(poseData(), 400);
+  assert.equal(jumps, 2);
+});
+
+test("T-pose rejects brief movement and disarms on tracking loss or stale frames", () => {
+  for (const gap of [false, true]) {
+    const engine = new PoseJumpController();
+    for (let now = 0; now <= 400; now += 40) engine.update(poseData(false), now);
+    assert.equal(engine.update(poseData(), 440).jump, false);
+    assert.equal(engine.update(poseData(), 480).jump, false);
+    if (!gap) engine.update({}, 520);
+    for (let now = gap ? 1000 : 560; now < 2400; now += 40)
+      assert.equal(engine.update(poseData(), now).jump, false);
+  }
+});
 
 function fixture(options) {
   const engine = new GestureController(options);

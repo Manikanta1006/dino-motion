@@ -22,7 +22,31 @@ npm run preview
 
 The build includes the worker, models, and WASM files in `dist/`. The preview URL is http://127.0.0.1:4173. Serve the complete `dist/` directory at the site's root. No external CDN or font service is used at runtime. After the local server is running and assets have been installed, internet access is unnecessary.
 
-## Playing with hands
+## Deploy to Cloudflare Workers
+
+`wrangler.jsonc` deploys the complete `dist/` folder to the existing `dino-motion` Worker. No R2 bucket or application API key is required.
+
+For interactive deployment, run `npx wrangler login`, then `npm run deploy`. The deploy script builds the game and includes its models and WASM runtime before publishing.
+
+For CI, configure `CLOUDFLARE_API_TOKEN` as a secret with Workers deployment permissions and `CLOUDFLARE_ACCOUNT_ID` as your account ID. Never put credentials in browser code or commit them to Git.
+
+In Cloudflare Workers Builds, use `npm run build` as the build command and `npx wrangler deploy` as the deploy command.
+
+## Playing with the T-pose gesture (default)
+
+Open **Controls**, select **Enable camera**, and allow camera access. Keep both shoulders, elbows, and wrists visible. Start with both arms lowered, then stretch both arms straight out sideways at shoulder height, like a T. Hold for about 200 ms to jump once. Lower both arms for at least 180 ms before repeating; holding the T-pose never repeats a jump. No calibration is needed, and your feet do not need to be in frame.
+
+The detector uses pose landmarks 11–16 (shoulders, elbows, wrists), confidence checks, shoulder-relative distances, and an 850 ms cooldown. Missing joints or stale tracking disarm the gesture until both arms are lowered again. Only arm joints are used; head direction and leg position do not trigger jumps.
+
+Choose **Controls → Jump gesture → Calibrated hand movement** to use the previous control described below. Switching gesture modes clears calibration and rearms only after returning to the corresponding neutral position.
+
+### Camera permission keeps appearing or is blocked
+
+Use the same deployed HTTPS address in a regular browser tab. In Chrome, choose **Allow while visiting the site** when offered; **Allow this time** may ask again on a later visit. To change a saved block, open the site controls beside the address bar and set **Camera → Allow**. See [Chrome's camera permission guide](https://support.google.com/chrome/answer/2693767?hl=en). Browser settings, private browsing, and automatic permission resets can affect how long a grant lasts; the app cannot override them.
+
+Controls displays the current permission state when the browser supports querying it. Opening Controls or refreshing the camera list never requests video access. Enabling the camera checks for a saved block first and prevents duplicate starts while a camera request or stream is active. Permission changes in browser settings update the displayed state. If an embedded preview blocks access, use **Open game in a separate tab**. If browser permission is allowed but access still fails, check **Windows Settings → Privacy & security → Camera**, including browser/desktop app access, and confirm Iriun's PC client shows live video.
+
+## Playing with calibrated hand movement
 
 The game fills the browser window by default. **Controls** opens camera setup, calibration, sensitivity, and instructions. Opening Controls pauses an active run; select **Back to game**, then **Resume run** to continue. Camera processing continues when the setup dialog is closed, and movement/detection feedback appears on the playfield. **Fullscreen** expands the game beyond browser chrome when supported; Escape exits fullscreen (or closes an open setup dialog).
 
@@ -45,7 +69,7 @@ Install the [DroidCam Windows client matching your phone app](https://www.dev47a
 
 In the game, open **Controls → Refresh cameras → Camera source**, choose the installed DroidCam video device, then select **Enable camera**. If names are hidden, allow camera access once, turn the camera off, and refresh the list. Turn the camera off before switching sources, then recalibrate for the new view. If DroidCam is missing, finish installing/connecting its Windows client and restart your browser. The game uses the virtual webcam exposed by Windows; it does not directly fetch a phone IP/video URL. The phone-to-PC stream is handled by DroidCam; landmark processing stays in the browser.
 
-`bodySamples()` uses only hand palm landmarks **0, 5, 9, 13, 17** and pose shoulders **11, 12**. The worker sends only those shoulder landmarks to the main thread. No face-orientation measurement, face-direction flag, compass direction, or head rotation is read or used as a jump condition. Pose Landmarker internally estimates a full pose, but only shoulders are consumed by this app.
+In calibrated hand mode, `bodySamples()` uses only hand palm landmarks **0, 5, 9, 13, 17** and pose shoulders **11, 12**. The worker sends shoulders plus arm landmarks **11–16** for T-pose detection to the main thread. No face-orientation measurement, face-direction flag, compass direction, or head rotation is read or used as a jump condition. Pose Landmarker internally estimates a full pose, but only shoulders, elbows and wrists are consumed by this app.
 
 For each hand, the raw measurement is:
 

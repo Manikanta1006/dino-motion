@@ -4,6 +4,7 @@ let hand, pose;
 self.onmessage = async ({ data }) => {
   try {
     if (data.type === "init") {
+      self.postMessage({ type: "progress", message: "Camera connected. Loading hand tracking model…" });
       const files = await Vision.FilesetResolver.forVisionTasks(
         new URL("./mediapipe/wasm", self.location).href,
       );
@@ -21,6 +22,7 @@ self.onmessage = async ({ data }) => {
         minHandPresenceConfidence: 0.55,
         minTrackingConfidence: 0.55,
       });
+      self.postMessage({ type: "progress", message: "Hand model loaded. Loading shoulder tracking model…" });
       pose = await Vision.PoseLandmarker.createFromOptions(files, {
         baseOptions: {
           modelAssetPath: new URL(
@@ -44,6 +46,7 @@ self.onmessage = async ({ data }) => {
           type: "result",
           hands: hands.landmarks,
           handedness: hands.handedness,
+          arms: body.landmarks[0] ? body.landmarks[0].slice(11, 17) : null,
           shoulders: body.landmarks[0]
             ? [body.landmarks[0][11], body.landmarks[0][12]]
             : null,

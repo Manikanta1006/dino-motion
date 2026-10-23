@@ -47,6 +47,7 @@ export default function App() {
     jumps: 0,
   });
   const [sensitivity, setSensitivity] = useState(55);
+  const [gestureMode, setGestureMode] = useState("pose");
   const [jumpInfo, setJumpInfo] = useState({ at: 0, source: "" });
   const [flash, setFlash] = useState(false);
   const flashTimer = useRef(null);
@@ -54,7 +55,7 @@ export default function App() {
   const threshold = 0.52 - sensitivity * 0.0042;
   const tracking = useHandTracking((source) => {
     if (!settingsDialog.current?.open) game.current?.jump(source);
-  }, threshold);
+  }, threshold, gestureMode);
   const { camera, feedback, error, fps } = tracking;
   const ready = camera === "on";
   const notifyJump = (source) => {
@@ -107,7 +108,7 @@ export default function App() {
               <span>A longer run.</span>
             </h1>
             <p className="intro-copy">
-              Meet your next high score. Move a hand up or down
+              Meet your next high score. Stretch both arms sideways
               <br className="desktop-break" /> to jump, find your rhythm, and
               keep the dino running.
             </p>
@@ -189,11 +190,23 @@ export default function App() {
             <span>
               <kbd>SPACE</kbd> <span className="or">or</span> <kbd>↑</kbd> to
               jump <span className="divider">/</span>{" "}
-              {ready && feedback.calibrated
+              {ready && (gestureMode === "pose" || feedback.calibrated)
                 ? "Hand controls connected"
                 : "Keyboard always available"}
             </span>
             <div>
+              {!ready && camera !== "loading" && (
+                <button
+                  className="screen-button"
+                  onClick={() => {
+                    openControls();
+                    void tracking.start();
+                  }}
+                  aria-haspopup="dialog"
+                >
+                  <Icon type="camera" size={16} /> Enable camera
+                </button>
+              )}
               <button
                 className="screen-button"
                 onClick={openControls}
@@ -262,7 +275,7 @@ export default function App() {
                   {ready
                     ? "LIVE"
                     : camera === "loading"
-                      ? "CONNECTING"
+                      ? tracking.previewReady ? "CAMERA CONNECTED" : "CONNECTING"
                       : "CAMERA OFF"}
                 </span>
               </div>
@@ -305,11 +318,20 @@ export default function App() {
                     ? "Turn off the camera before choosing another source. Recalibrate after switching."
                     : "For your phone, connect Iriun or DroidCam using its phone app and PC client first, then select its camera here. Enable once to reveal camera names if needed."}
                 </p>
+                <p className="camera-permission-help" role="status">
+                  {tracking.permission === "granted"
+                    ? "Camera permission: allowed. Enable camera starts video using the browser's saved permission."
+                    : tracking.permission === "denied"
+                      ? "Camera permission: blocked. Use the site controls beside the address bar to set Camera to Allow, then enable the camera."
+                      : "Your browser needs camera permission. Choose Allow while visiting the site if offered. Allow this time may ask again later."}
+                  {" "}<a href={window.location.href} target="_blank" rel="noreferrer">Open game in a separate tab</a>
+                  {" · "}<a href="https://support.google.com/chrome/answer/2693767?hl=en" target="_blank" rel="noreferrer">Camera permission help</a>
+                </p>
                 {tracking.deviceError && (
                   <p role="status">{tracking.deviceError}</p>
                 )}
               </div>
-              <div className={`camera-preview ${ready ? "is-live" : ""}`}>
+              <div className={`camera-preview ${tracking.previewReady ? "is-live" : ""}`}>
                 <video
                   ref={tracking.videoRef}
                   muted
@@ -323,7 +345,7 @@ export default function App() {
                   height="480"
                   aria-label="Hand landmarks and shoulder reference overlay"
                 />
-                {!ready && (
+                {!tracking.previewReady && (
                   <div className="camera-placeholder">
                     <span className="camera-icon">
                       <Icon type="camera" size={28} />
@@ -346,16 +368,19 @@ export default function App() {
                     )}
                   </div>
                 )}
-                {ready && (
+                {tracking.previewReady && (
                   <>
                     <span className="preview-tag">MIRRORED PREVIEW</span>
-                    <span className="fps">{fps} FPS</span>
+                    {ready && <span className="fps">{fps} FPS</span>}
                     <span className="landmark-key">
-                      <i /> Hand landmarks <i /> Shoulder reference
+                      <i /> {gestureMode === "pose" ? "Arm pose" : "Hand landmarks"} <i /> Shoulder reference
                     </span>
                   </>
                 )}
               </div>
+              {camera === "loading" && tracking.previewReady && (
+                <p role="status">{feedback.status} First-time loading can take up to two minutes.</p>
+              )}
               {error && (
                 <p className="error-message" role="alert">
                   {error}
@@ -381,6 +406,18 @@ export default function App() {
                 <span className="tiny-label">BODY RELATIVE</span>
               </div>
               <div className="calibration-block">
+                <label htmlFor="gesture-mode">Jump gesture</label>
+                <select id="gesture-mode" value={gestureMode} onChange={(event) => setGestureMode(event.target.value)}>
+                  <option value="pose">Arms sideways (T-pose)</option>
+                  <option value="hands">Calibrated hand movement</option>
+                </select>
+                {gestureMode === "pose" ? <>
+                  <h3>Stretch your arms to jump</h3>
+                  <svg viewBox="0 0 100 80" width="100" height="80" role="img" aria-label="T-pose: both arms straight out sideways" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                    <circle cx="50" cy="12" r="7" /><path d="M50 19v34 M12 30h76 M50 53L38 73 M50 53l12 20" />
+                  </svg>
+                  <p>Start with both arms lowered. Stretch both arms out sideways at shoulder height and hold briefly to jump. Lower your arms before repeating. Keep both shoulders, elbows and wrists in view. No calibration needed.</p>
+                </> : <>
                 <div className="step-label">
                   <span>01</span>
                   <h3>Find your neutral</h3>
@@ -425,7 +462,9 @@ export default function App() {
                     Recalibrate to add another hand.
                   </p>
                 )}
+                </>}
               </div>
+              {gestureMode === "hands" &&
               <div className="sensitivity-block">
                 <div className="step-label">
                   <span>02</span>
@@ -451,6 +490,7 @@ export default function App() {
                   width · cooldown 0.85s
                 </p>
               </div>
+              }
               <div className="tracking-status">
                 <div>
                   <span className="tiny-label">MOVEMENT</span>
@@ -496,11 +536,11 @@ export default function App() {
             <div className="instruction">
               <span className="instruction-icon">↕</span>
               <div>
-                <h3>Up or down. Your call.</h3>
+                <h3>{gestureMode === "pose" ? "Arms out. Jump." : "Up or down. Your call."}</h3>
                 <p>
-                  Move either calibrated hand away from neutral.
+                  {gestureMode === "pose" ? "Stretch both arms sideways at shoulder height." : "Move either calibrated hand away from neutral."}
                   <br />
-                  Both directions make the dino jump.
+                  {gestureMode === "pose" ? "Hold briefly for one jump." : "Both directions make the dino jump."}
                 </p>
               </div>
             </div>
@@ -509,7 +549,7 @@ export default function App() {
               <div>
                 <h3>Return, reset, repeat.</h3>
                 <p>
-                  Bring your hand back to neutral to rearm.
+                  {gestureMode === "pose" ? "Lower both arms before repeating." : "Bring your hand back to neutral to rearm."}
                   <br />
                   Holding a pose never repeats a jump.
                 </p>
